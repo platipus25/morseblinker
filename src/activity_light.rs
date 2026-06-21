@@ -3,7 +3,7 @@ use std::fs::{File, OpenOptions};
 use std::io;
 use std::io::Write;
 use std::path::Path;
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 
 /// A raspberry pi activity light
 pub struct ActivityLight {

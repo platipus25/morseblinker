@@ -1,6 +1,6 @@
 use crate::{Keyable, Symbol};
 use std::io::{self, Write};
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 
 pub struct TextInterface<W: Write>(W);
 
