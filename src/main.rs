@@ -1,3 +1,21 @@
+//! A library for working with morse code
+//!
+//! # Example use
+//! ```
+//! let transport = TextInterface::stdout();
+//! let mut keyer = Keyer {
+//!     dit_length: Duration::from_millis(60),
+//!     space_dit_length: Duration::from_millis(60),
+//!     transport,
+//! };
+//!
+//! let message = Sequence::try_from("rmku").unwrap();
+//!
+//! println!("{}", message);
+//!
+//! keyer.run(message).await.unwrap();
+//! ```
+
 use crate::activity_light::ActivityLight;
 use crate::text_interface::TextInterface;
 use std::fmt;
@@ -5,11 +23,11 @@ use std::io;
 use std::path::Path;
 use tokio::time::Duration;
 
-mod activity_light;
-mod text_interface;
+pub mod activity_light;
+pub mod text_interface;
 
 #[cfg(feature = "wav")]
-mod wav_file;
+pub mod wav_file;
 
 ///
 /// From TM 11-459:
@@ -86,6 +104,10 @@ where
     }
 }
 
+/// Represents a sequence of morse code `Symbol`s
+///
+/// With convenience functions for converting to and from text.
+#[derive(Debug, Clone)]
 pub struct Sequence(Vec<Symbol>);
 
 impl Sequence {
@@ -231,6 +253,7 @@ pub enum MorseAlphabetError {
     UnknownCharacter,
 }
 
+/// Represents a transport on which morse code can be keyed out.
 pub trait Keyable {
     type Error;
 

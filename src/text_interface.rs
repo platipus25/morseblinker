@@ -1,3 +1,5 @@
+//! This module contains a interface for blinking morse code on an ANSI terminal.
+
 use crate::{Keyable, Symbol};
 use std::io::{self, Write};
 use tokio::time::{Duration, sleep};

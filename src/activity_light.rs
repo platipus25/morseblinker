@@ -1,3 +1,6 @@
+//! This module contains an interface for a linux sys class led device like the ACT light on
+//! a raspberry pi zero.
+
 use crate::{Keyable, Symbol};
 use std::fs::{File, OpenOptions};
 use std::io;
