@@ -8,6 +8,9 @@ use tokio::time::Duration;
 mod activity_light;
 mod text_interface;
 
+#[cfg(feature = "wav")]
+mod wav_file;
+
 ///
 /// From TM 11-459:
 /// (1) The dit is the unit of length.
