@@ -1,8 +1,12 @@
-use std::fs::File;
+use crate::activity_light::ActivityLight;
+use crate::text_interface::TextInterface;
+use std::fmt;
 use std::io;
-use std::io::Write;
 use std::path::Path;
-use tokio::time::{sleep, Duration};
+use tokio::time::Duration;
+
+mod activity_light;
+mod text_interface;
 
 ///
 /// From TM 11-459:
@@ -18,33 +22,60 @@ pub enum Symbol {
     Dit,
     /// 3 dits followed by a dit space
     Dah,
+
+    CharacterSpace,
     /// 2 dit spaces, use 3x for word spaces
-    Space,
+    GroupSpace,
 }
 
-pub struct Keyer {
+impl fmt::Display for Symbol {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(
+            fmt,
+            "{}",
+            match self {
+                Symbol::Dit => ".",
+                Symbol::Dah => "-",
+                Symbol::CharacterSpace => " ",
+                Symbol::GroupSpace => " / ",
+            }
+        )
+    }
+}
+
+pub struct Keyer<K: Keyable> {
     pub dit_length: Duration,
     pub space_dit_length: Duration,
-    pub light: ActivityLight,
+    pub transport: K,
 }
 
-impl Keyer {
+impl<K: Keyable> Keyer<K>
+where
+    io::Error: From<<K as Keyable>::Error>,
+{
     pub async fn run(&mut self, sequence: Sequence) -> io::Result<()> {
         for symbol in sequence.0 {
             match symbol {
                 Symbol::Dit => {
-                    self.light
-                        .set_delay(self.dit_length, self.space_dit_length)?;
-                    self.light.shot()?;
-                    sleep(self.dit_length + self.space_dit_length).await
+                    self.transport
+                        .play(self.dit_length, self.space_dit_length, symbol)
+                        .await?
                 }
                 Symbol::Dah => {
-                    self.light
-                        .set_delay(3 * self.dit_length, self.space_dit_length)?;
-                    self.light.shot()?;
-                    sleep(3 * self.dit_length + self.space_dit_length).await
+                    self.transport
+                        .play(3 * self.dit_length, self.space_dit_length, symbol)
+                        .await?
                 }
-                Symbol::Space => sleep(2 * self.space_dit_length).await,
+                Symbol::GroupSpace => {
+                    self.transport
+                        .play(Duration::from_millis(0), 6 * self.space_dit_length, symbol)
+                        .await?
+                }
+                Symbol::CharacterSpace => {
+                    self.transport
+                        .play(Duration::from_millis(0), 2 * self.space_dit_length, symbol)
+                        .await?
+                }
             }
         }
 
@@ -60,6 +91,16 @@ impl Sequence {
     }
 }
 
+impl fmt::Display for Sequence {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        for sym in self.0.iter() {
+            write!(fmt, "{}", sym)?
+        }
+
+        Ok(())
+    }
+}
+
 impl TryFrom<&str> for Sequence {
     type Error = MorseAlphabetError;
 
@@ -67,7 +108,7 @@ impl TryFrom<&str> for Sequence {
         let mut seq = Vec::new();
         for character in other.chars() {
             seq.extend_from_slice(convert_character(character)?);
-            seq.push(Symbol::Space);
+            seq.push(Symbol::CharacterSpace);
         }
 
         Ok(Sequence(seq))
@@ -78,7 +119,7 @@ fn convert_character(character: char) -> Result<&'static [Symbol], MorseAlphabet
     Ok(match character {
         'e' => &[Symbol::Dit],
         'm' => &[Symbol::Dah, Symbol::Dah],
-        ' ' => &[Symbol::Space, Symbol::Space],
+        ' ' => &[Symbol::GroupSpace],
         _ => Err(MorseAlphabetError::UnknownCharacter)?,
     })
 }
@@ -88,52 +129,51 @@ pub enum MorseAlphabetError {
     UnknownCharacter,
 }
 
-/// A raspberry pi activity light
-struct ActivityLight {
-    delay_on: File,
-    delay_off: File,
-    shot: File,
-}
+pub trait Keyable {
+    type Error;
 
-impl ActivityLight {
-    fn new(kernel_dev: &Path) -> io::Result<Self> {
-        let mut trigger = File::open(kernel_dev.join("trigger"))?;
-        trigger.write_all(b"oneshot")?;
-
-        Ok(ActivityLight {
-            delay_on: File::open(kernel_dev.join("delay_on"))?,
-            delay_off: File::open(kernel_dev.join("delay_off"))?,
-            shot: File::open(kernel_dev.join("shot"))?,
-        })
-    }
-
-    fn shot(&mut self) -> io::Result<()> {
-        self.shot.write_all(&[1])
-    }
-
-    fn set_delay(&mut self, on: Duration, off: Duration) -> io::Result<()> {
-        write!(self.delay_on, "{}", on.as_millis())?;
-        write!(self.delay_off, "{}", off.as_millis())?;
-
-        Ok(())
-    }
+    async fn play(
+        &mut self,
+        on: Duration,
+        off: Duration,
+        symbol: Symbol,
+    ) -> Result<(), Self::Error>;
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Hello, world!");
 
-    let light = ActivityLight::new(Path::new("/sys/class/leds/ACT/"))
+    let transport = ActivityLight::new(Path::new("/sys/class/leds/ACT/"))
         .expect("could not connect to light sys class device");
+    // let transport = TextInterface::stdout();
     let mut keyer = Keyer {
         dit_length: Duration::from_millis(60),
         space_dit_length: Duration::from_millis(60),
-        light,
+        transport,
     };
 
-    let message = Sequence::try_from("em me").unwrap();
+    let message = Sequence::try_from("em mm me").unwrap();
+
+    println!("{}", message);
 
     keyer.run(message).await?;
 
     Ok(())
+}
+
+#[tokio::test]
+async fn text_output_test() {
+    let transport = TextInterface::stdout();
+    let mut keyer = Keyer {
+        dit_length: Duration::from_millis(60),
+        space_dit_length: Duration::from_millis(60),
+        transport,
+    };
+
+    let message = Sequence::try_from("em mm me").unwrap();
+
+    println!("{}", message);
+
+    keyer.run(message).await.unwrap();
 }
