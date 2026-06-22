@@ -70,11 +70,21 @@ pub struct Keyer<K: Keyable> {
     pub transport: K,
 }
 
-impl<K: Keyable> Keyer<K>
-where
-    io::Error: From<<K as Keyable>::Error>,
-{
-    pub async fn run(&mut self, sequence: Sequence) -> io::Result<()> {
+impl<K: Keyable> Keyer<K> {
+    /// Sets the speed using the PARIS standard
+    ///
+    /// The word PARIS is 50 dit units long, so we time a dit so that you can key paris `wpm` times
+    /// per minute
+    pub fn with_wpm(&mut self, wpm: f32) -> &mut Self {
+        let dit_length = Duration::from_secs_f32(60.0 / wpm / 50.0);
+
+        self.dit_length = dit_length;
+        self.space_dit_length = dit_length;
+
+        self
+    }
+
+    pub async fn run(&mut self, sequence: Sequence) -> Result<(), K::Error> {
         for symbol in sequence.0 {
             match symbol {
                 Symbol::Dit => {
@@ -242,7 +252,7 @@ const fn convert_character(character: char) -> Result<&'static [Symbol], MorseAl
         ],
 
         ' ' => &[Symbol::GroupSpace],
-        _ => return Err(MorseAlphabetError::UnknownCharacter),
+        c => return Err(MorseAlphabetError::UnknownCharacter(c)),
     };
 
     Ok(out)
@@ -250,7 +260,7 @@ const fn convert_character(character: char) -> Result<&'static [Symbol], MorseAl
 
 #[derive(Debug)]
 pub enum MorseAlphabetError {
-    UnknownCharacter,
+    UnknownCharacter(char),
 }
 
 /// Represents a transport on which morse code can be keyed out.
@@ -277,6 +287,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         space_dit_length: Duration::from_millis(60),
         transport,
     };
+    keyer.with_wpm(10.0);
 
     let message = Sequence::try_from("em mm me").unwrap();
 
